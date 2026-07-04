@@ -1,0 +1,691 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高阶梅花易数排盘与刑冲合墓分析工具</title>
+    <!-- 引入 Lunar.js 用于自动推演四纲天干地支 -->
+    <script src="https://unpkg.com/lunar-javascript/lunar.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .yao-line { height: 12px; margin: 4px 0; border-radius: 2px; }
+        .yang-yao { background-color: #1f2937; width: 100%; }
+        .yin-yao { display: flex; justify-content: space-between; width: 100%; }
+        .yin-part { background-color: #1f2937; width: 40%; height: 100%; border-radius: 2px; }
+        .gua-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; background: white; }
+        .ti-badge { background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold;}
+        .yong-badge { background-color: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold;}
+        body { background-color: #f3f4f6; color: #1f2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    </style>
+</head>
+<body>
+<div id="app" class="max-w-7xl mx-auto p-4">
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">☯ 梅花易数高阶排盘分析系统</h1>
+        <p class="text-gray-600">包含主互变卦、四纲关联、六亲十神及生克刑冲合墓全解</p>
+    </div>
+
+    <!-- 四纲与起卦参数输入区 -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-xl font-bold mb-4 border-b pb-2">1. 起卦参数与四纲排盘</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <h3 class="font-semibold text-gray-700 mb-2 flex justify-between items-end">
+                    <span>四纲 (天干地支)</span>
+                    <span class="text-xs text-indigo-500 font-normal">系统时间: {{ currentTimeStr }}</span>
+                </h3>
+                <div class="grid grid-cols-4 gap-2">
+                    <div>
+                        <label class="block text-xs text-gray-500">年柱</label>
+                        <!-- 改为 input，允许点击修改 -->
+                        <input v-model="sizhu.year" class="w-full border rounded p-2 text-center bg-white text-gray-700 font-bold shadow-inner focus:ring-2 focus:ring-indigo-300" placeholder="年柱">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500">月柱</label>
+                        <input v-model="sizhu.month" class="w-full border rounded p-2 text-center bg-white text-gray-700 font-bold shadow-inner focus:ring-2 focus:ring-indigo-300" placeholder="月柱">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500">日柱</label>
+                        <input v-model="sizhu.day" class="w-full border rounded p-2 text-center bg-white text-gray-700 font-bold shadow-inner focus:ring-2 focus:ring-indigo-300" placeholder="日柱">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500">时柱</label>
+                        <input v-model="sizhu.hour" class="w-full border rounded p-2 text-center bg-white text-gray-700 font-bold shadow-inner focus:ring-2 focus:ring-indigo-300" placeholder="时柱">
+                    </div>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-1">默认已根据当前系统时间推演，您也可直接点击上方输入框手动修改</p>
+            </div>
+            <div>
+                <h3 class="font-semibold text-gray-700 mb-2">起卦参数 (数字)</h3>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-xs text-gray-500">上卦数 (÷8)</label>
+                        <input type="number" v-model.number="nums.n1" class="w-full border rounded p-2 text-center focus:ring-2 focus:ring-indigo-300" placeholder="数1">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500">下卦数 (÷8)</label>
+                        <input type="number" v-model.number="nums.n2" class="w-full border rounded p-2 text-center focus:ring-2 focus:ring-indigo-300" placeholder="数2">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500">动爻数 (÷6)</label>
+                        <input type="number" v-model.number="nums.n3" class="w-full border rounded p-2 text-center focus:ring-2 focus:ring-indigo-300" placeholder="数3">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-4 text-center">
+            <button @click="generateChart" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-8 rounded shadow">
+                生成排盘与分析
+            </button>
+        </div>
+    </div>
+
+    <!-- 排盘展示区 -->
+    <div v-if="chartReady" class="mb-8">
+        <h2 class="text-xl font-bold mb-4 border-b pb-2 flex justify-between items-center flex-wrap gap-2">
+            <span>2. 智能排盘图解 (刑冲合墓与神煞指示)</span>
+            
+            <button @click="referenceType = referenceType === 'ti' ? 'yong' : 'ti'" 
+                    class="text-sm px-4 py-1.5 font-bold rounded shadow-md transition-colors" 
+                    :class="referenceType === 'ti' ? 'bg-red-50 text-red-700 border-2 border-red-400 hover:bg-red-100' : 'bg-blue-50 text-blue-700 border-2 border-blue-400 hover:bg-blue-100'">
+                当前计算基准点: 【{{ referenceType === 'ti' ? '体卦' : '用卦' }}】 🔄 点击切换
+            </button>
+        </h2>
+        
+        <!-- 四纲展示与交互指示区 -->
+        <div class="mb-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200 shadow-sm">
+            <h3 class="text-center font-bold text-gray-800 mb-4 border-b border-yellow-300 pb-2">☯ 四纲排盘 (包含十神六亲与作用标记)</h3>
+            <div class="grid grid-cols-4 gap-2 text-center">
+                <div v-for="key in ['year', 'month', 'day', 'hour']" :key="key" class="flex flex-col items-center">
+                    <span class="text-sm text-gray-600 font-bold mb-1">{{ key === 'year' ? '年柱' : key === 'month' ? '月柱' : key === 'day' ? '日柱' : '时柱' }}</span>
+                    <div class="flex flex-col items-center mb-2 min-h-[48px] w-full border-b border-dashed border-yellow-200 pb-1">
+                        <div class="flex items-center gap-1">
+                            <span class="text-xl font-bold">{{ sizhu[key] ? sizhu[key].charAt(0) : '-' }}</span>
+                            <div v-if="sizhu[key] && currentBaseGua" class="flex flex-col text-[10px] leading-tight text-left font-bold border-l pl-1 border-gray-300">
+                                <span class="text-blue-600">{{ getShiShenText(sizhu[key].charAt(0)) }}</span>
+                                <span class="text-red-600">{{ getLiuQinText(getStemWx(sizhu[key].charAt(0))) }}</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap justify-center gap-1 mt-1">
+                            <span v-for="(tag, idx) in visualTags.pillars[key+'_stem']" :key="idx" class="text-[10px] text-white px-1 rounded whitespace-nowrap shadow-sm" :class="tag.bgClass">
+                                {{tag.type}}:{{tag.target}}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-center min-h-[48px] w-full pt-1">
+                        <div class="flex items-center gap-1">
+                            <span class="text-xl font-bold">{{ sizhu[key] ? sizhu[key].charAt(1) : '-' }}</span>
+                            <div v-if="sizhu[key] && sizhu[key].length>1 && currentBaseGua" class="flex flex-col text-[10px] leading-tight text-left font-bold border-l pl-1 border-gray-300">
+                                <span class="text-blue-600">{{ getBranchShiShenText(sizhu[key].charAt(1)) }}</span>
+                                <span class="text-red-600">{{ getLiuQinText(getBranchWx(sizhu[key].charAt(1))) }}</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap justify-center gap-1 mt-1">
+                            <span v-for="(tag, idx) in visualTags.pillars[key+'_branch']" :key="idx" class="text-[10px] text-white px-1 rounded whitespace-nowrap shadow-sm" :class="tag.bgClass">
+                                {{tag.type}}:{{tag.target}}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- 主卦 -->
+            <div class="gua-box">
+                <h3 class="text-center font-bold text-lg mb-4">主卦：{{ originalGuaName }}</h3>
+                <gua-trigram :trigram="original.upper" position="上卦" :tiyong="getTiYong('upper', 0)" :base-gua="currentBaseGua" :tags="visualTags.original_upper"></gua-trigram>
+                <div class="my-3 border-t border-dashed border-gray-300"></div>
+                <gua-trigram :trigram="original.lower" position="下卦" :tiyong="getTiYong('lower', 0)" :base-gua="currentBaseGua" :tags="visualTags.original_lower"></gua-trigram>
+            </div>
+            <!-- 互卦 -->
+            <div class="gua-box">
+                <h3 class="text-center font-bold text-lg mb-4">互卦：{{ mutualGuaName }}</h3>
+                <gua-trigram :trigram="mutual.upper" position="上互" :tiyong="'互'" :base-gua="currentBaseGua" :tags="visualTags.mutual_upper"></gua-trigram>
+                <div class="my-3 border-t border-dashed border-gray-300"></div>
+                <gua-trigram :trigram="mutual.lower" position="下互" :tiyong="'互'" :base-gua="currentBaseGua" :tags="visualTags.mutual_lower"></gua-trigram>
+            </div>
+            <!-- 变卦 -->
+            <div class="gua-box">
+                <h3 class="text-center font-bold text-lg mb-4">变卦：{{ changedGuaName }}</h3>
+                <gua-trigram :trigram="changed.upper" position="上变" :tiyong="getTiYong('upper', 1)" :base-gua="currentBaseGua" :tags="visualTags.changed_upper"></gua-trigram>
+                <div class="my-3 border-t border-dashed border-gray-300"></div>
+                <gua-trigram :trigram="changed.lower" position="下变" :tiyong="getTiYong('lower', 1)" :base-gua="currentBaseGua" :tags="visualTags.changed_lower"></gua-trigram>
+            </div>
+        </div>
+        <div class="text-center mt-4 text-gray-700 bg-blue-50 p-3 rounded shadow-inner border border-blue-100">
+            <strong>核心基准分析提示：</strong> 
+            当前以 <span class="font-bold text-lg" :class="referenceType === 'ti' ? 'text-red-600' : 'text-blue-600'">【{{ referenceType === 'ti' ? '体卦' : '用卦' }}】 {{ currentBaseGua.name }}卦 ({{ currentBaseGua.element }}{{ currentBaseGua.yy }})</span> 为极点推演所有六亲与十神 | 
+            动爻在第 <span class="font-bold text-blue-600">{{ movingLine }}</span> 爻
+        </div>
+    </div>
+
+    <!-- 动态关系分析引擎 (按卦顺序展示) -->
+    <div v-if="chartReady" class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-xl font-bold mb-4 border-b pb-2 flex items-center">
+            <span class="mr-2">📋</span> 3. 刑冲合墓 详情罗列 (按卦归类)
+        </h2>
+        
+        <!-- 全局与卦象自带冲 (专属显示) -->
+        <div class="mb-6" v-if="groupedLogs.global.logs.length > 0">
+            <h3 class="font-bold text-red-700 mb-2 border-b-2 border-red-200 pb-1 flex items-center">
+                <span class="mr-2">🌐</span> {{ groupedLogs.global.title }}
+            </h3>
+            <div class="flex flex-col gap-2">
+                <div v-for="(log, idx) in groupedLogs.global.logs" :key="'g'+idx" class="p-2 rounded text-sm shadow-sm" :class="log.typeClass">
+                    {{ log.msg }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- 各卦刑冲合墓归类展示 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <template v-for="key in ['original_upper', 'original_lower', 'mutual_upper', 'mutual_lower', 'changed_upper', 'changed_lower']">
+                <div :key="key" class="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm">
+                    <h3 class="font-bold text-indigo-700 mb-2 border-b border-indigo-200 pb-1">
+                        {{ groupedLogs[key].title }}
+                    </h3>
+                    <ul class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        <li v-for="(log, idx) in groupedLogs[key].logs" :key="idx" class="p-2 rounded text-xs shadow-sm" :class="log.typeClass">
+                            {{ log.msg }}
+                        </li>
+                        <li v-if="groupedLogs[key].logs.length === 0" class="text-gray-400 text-xs italic">无明显刑冲合墓关系</li>
+                    </ul>
+                </div>
+            </template>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// --- 基础数据字典 ---
+const WUXING = { '木':'木', '火':'火', '土':'土', '金':'金', '水':'水' };
+const WX_SHENG = { '木':'火', '火':'土', '土':'金', '金':'水', '水':'木' };
+const WX_KE = { '木':'土', '土':'水', '水':'火', '火':'金', '金':'木' };
+
+const STEMS = {
+    '甲':{wx:'木', yy:'阳'}, '乙':{wx:'木', yy:'阴'}, '丙':{wx:'火', yy:'阳'}, '丁':{wx:'火', yy:'阴'}, '戊':{wx:'土', yy:'阳'},
+    '己':{wx:'土', yy:'阴'}, '庚':{wx:'金', yy:'阳'}, '辛':{wx:'金', yy:'阴'}, '壬':{wx:'水', yy:'阳'}, '癸':{wx:'水', yy:'阴'}
+};
+const BRANCHES = {
+    '子':{wx:'水', yy:'阳'}, '丑':{wx:'土', yy:'阴'}, '寅':{wx:'木', yy:'阳'}, '卯':{wx:'木', yy:'阴'},
+    '辰':{wx:'土', yy:'阳'}, '巳':{wx:'火', yy:'阴'}, '午':{wx:'火', yy:'阳'}, '未':{wx:'土', yy:'阴'},
+    '申':{wx:'金', yy:'阳'}, '酉':{wx:'金', yy:'阴'}, '戌':{wx:'土', yy:'阳'}, '亥':{wx:'水', yy:'阴'}
+};
+
+const BAGUA = {
+    1: { name: '乾', element: '金', symbol: '☰', lines: [1,1,1], stems: ['庚'], branches: ['戌','亥'] },
+    2: { name: '兑', element: '金', symbol: '☱', lines: [1,1,0], stems: ['辛'], branches: ['酉'] },
+    3: { name: '离', element: '火', symbol: '☲', lines: [1,0,1], stems: ['丙', ], branches: ['午'] },
+    4: { name: '震', element: '木', symbol: '☳', lines: [1,0,0], stems: ['庚'], branches: ['卯'] },
+    5: { name: '巽', element: '木', symbol: '☴', lines: [0,1,1], stems: ['辛'], branches: ['辰','巳'] },
+    6: { name: '坎', element: '水', symbol: '☵', lines: [0,1,0], stems: ['戊'], branches: ['子'] },
+    7: { name: '艮', element: '土', symbol: '☶', lines: [0,0,1], stems: ['丙'], branches: ['丑','寅'] },
+    8: { name: '坤', element: '土', symbol: '☷', lines: [0,0,0], stems: ['乙','癸'], branches: ['未','申'] }
+};
+
+const GUA_NAMES = {
+    "1-1":"乾为天", "1-2":"天泽履", "1-3":"天火同人", "1-4":"天雷无妄", "1-5":"天风姤", "1-6":"天水讼", "1-7":"天山遁", "1-8":"天地否",
+    "2-1":"泽天夬", "2-2":"兑为泽", "2-3":"泽火革", "2-4":"泽雷随", "2-5":"泽风大过", "2-6":"泽水困", "2-7":"泽山咸", "2-8":"泽地萃",
+    "3-1":"火天大有", "3-2":"火泽睽", "3-3":"离为火", "3-4":"火雷噬嗑", "3-5":"火风鼎", "3-6":"火水未济", "3-7":"火山旅", "3-8":"火地晋",
+    "4-1":"雷天大壮", "4-2":"雷泽归妹", "4-3":"雷火丰", "4-4":"震为雷", "4-5":"雷风恒", "4-6":"雷水解", "4-7":"雷山小过", "4-8":"雷地豫",
+    "5-1":"风天小畜", "5-2":"风泽中孚", "5-3":"风火家人", "5-4":"风雷益", "5-5":"巽为风", "5-6":"风水涣", "5-7":"风山渐", "5-8":"风地观",
+    "6-1":"水天需", "6-2":"水泽节", "6-3":"水火既济", "6-4":"水雷屯", "6-5":"水风井", "6-6":"坎为水", "6-7":"水山蹇", "6-8":"水地比",
+    "7-1":"山天大畜", "7-2":"山泽损", "7-3":"山火贲", "7-4":"山雷颐", "7-5":"山风蛊", "7-6":"山水蒙", "7-7":"艮为山", "7-8":"山地剥",
+    "8-1":"地天泰", "8-2":"地泽临", "8-3":"地火明夷", "8-4":"地雷复", "8-5":"地风升", "8-6":"地水师", "8-7":"地山谦", "8-8":"坤为地"
+};
+
+// 卦象自带冲
+const GUA_CHONG = {
+    '离':'坎', '坎':'离',
+    '震':'兑', '兑':'震',
+    '乾':'巽', '巽':'乾',
+    '艮':'坤', '坤':'艮'
+};
+
+function getShenSha(guaName) {
+    if (guaName === '乾' || guaName === '兑') return '白虎';
+    if (guaName === '坎') return '玄武';
+    if (guaName === '艮' || guaName === '坤') return '勾陈';
+    if (guaName === '震') return '青龙';
+    if (guaName === '巽') return '腾蛇';
+    if (guaName === '离') return '朱雀';
+    return '-';
+}
+
+function getLiuQin(baseElement, targetElement) {
+    if (!baseElement || !targetElement) return '-';
+    if (baseElement === targetElement) return '兄弟';
+    if (WX_SHENG[targetElement] === baseElement) return '父母';
+    if (WX_SHENG[baseElement] === targetElement) return '子孙';
+    if (WX_KE[targetElement] === baseElement) return '官鬼';
+    if (WX_KE[baseElement] === targetElement) return '妻财';
+    return '-';
+}
+
+function getShiShenDirect(bWx, bYy, sWx, sYy) {
+    if (!bWx || !sWx) return '-';
+    let sameYy = (bYy === sYy);
+    if (bWx === sWx) return sameYy ? '比肩' : '劫财';
+    if (WX_SHENG[sWx] === bWx) return sameYy ? '偏印' : '正印';
+    if (WX_SHENG[bWx] === sWx) return sameYy ? '食神' : '伤官';
+    if (WX_KE[sWx] === bWx) return sameYy ? '偏官' : '正官';
+    if (WX_KE[bWx] === sWx) return sameYy ? '偏财' : '正财';
+    return '-';
+}
+
+// 统一颜色映射：合(粉)、冲(红)、刑(橙)、墓(灰)、三合(紫)
+function checkRelations(str1, str2) {
+    let rels = [];
+    const stemHe = [['甲','己','土'], ['乙','庚','金'], ['丙','辛','水'], ['丁','壬','木'], ['戊','癸','火']];
+    stemHe.forEach(pair => {
+        if ((str1===pair[0] && str2===pair[1]) || (str1===pair[1] && str2===pair[0])) {
+            rels.push({ type: '天干五合', detail: `${pair[0]}${pair[1]}合化${pair[2]}`, class: 'bg-pink-100 text-pink-800', shortType: '合', bgClass: 'bg-pink-500' });
+        }
+    });
+
+    const branchLiuhe = [['子','丑','土'], ['寅','亥','木'], ['卯','戌','火'], ['辰','酉','金'], ['巳','申','水'], ['午','未','日月']];
+    branchLiuhe.forEach(pair => {
+        if ((str1===pair[0] && str2===pair[1]) || (str1===pair[1] && str2===pair[0])) {
+            rels.push({ type: '地支六合', detail: `${pair[0]}${pair[1]}合${pair[2]}`, class: 'bg-pink-100 text-pink-800', shortType: '合', bgClass: 'bg-pink-500' });
+        }
+    });
+
+    const branchChong = [ ['子','午'], ['丑','未'], ['寅','申'], ['卯','酉'], ['辰','戌'], ['巳','亥'] ];
+    branchChong.forEach(pair => {
+        if ((str1===pair[0] && str2===pair[1]) || (str1===pair[1] && str2===pair[0])) {
+            rels.push({ type: '地支六冲', detail: `${pair[0]}${pair[1]}相冲`, class: 'bg-red-100 text-red-800', shortType: '冲', bgClass: 'bg-red-500' });
+        }
+    });
+
+    const branchXingPairs = [ ['寅','巳'], ['巳','申'], ['寅','申'], ['丑','戌'], ['戌','未'], ['丑','未'], ['子','卯'] ];
+    branchXingPairs.forEach(pair => {
+        if ((str1===pair[0] && str2===pair[1]) || (str1===pair[1] && str2===pair[0])) {
+            rels.push({ type: '地支相刑', detail: `${pair[0]}${pair[1]}相刑`, class: 'bg-orange-100 text-orange-800', shortType: '刑', bgClass: 'bg-orange-500' });
+        }
+    });
+    if (str1 === str2 && ['辰','午','酉','亥'].includes(str1)) {
+        rels.push({ type: '地支自刑', detail: `${str1}${str2}自刑`, class: 'bg-orange-100 text-orange-800', shortType: '刑', bgClass: 'bg-orange-500' });
+    }
+
+    return rels;
+}
+
+// Vue 组件：单个三爻卦展示
+const GuaTrigram = {
+    props: ['trigram', 'position', 'tiyong', 'baseGua', 'tags'],
+    template: `
+        <div class="flex items-start justify-between p-2 rounded bg-gray-50 border border-gray-200 mb-2 transition-all">
+            <div class="flex flex-col-reverse w-12 mt-1">
+                <div v-for="(line, index) in trigram.lines" :key="index" class="yao-line shadow-sm" :class="line ? 'yang-yao' : 'yin-yao'">
+                    <div v-if="!line" class="yin-part"></div>
+                    <div v-if="!line" class="yin-part"></div>
+                </div>
+            </div>
+            
+            <div class="flex-1 ml-4 text-sm">
+                <div class="flex items-center gap-1 mb-2 border-b pb-1 flex-wrap">
+                    <span v-if="tiyong==='体'" class="ti-badge shadow-sm">体</span>
+                    <span v-if="tiyong==='用'" class="yong-badge shadow-sm">用</span>
+                    <span v-if="tiyong==='变'" class="bg-purple-500 text-white px-1 rounded text-xs shadow-sm">变</span>
+                    <span v-if="tiyong==='互'" class="bg-gray-500 text-white px-1 rounded text-xs shadow-sm">互</span>
+                    
+                    <strong class="text-base ml-1">{{ trigram.name }} ({{ trigram.element }})</strong> 
+                    <span class="bg-teal-100 text-teal-800 px-1 rounded text-xs font-bold shadow-sm border border-teal-200 mx-1">
+                        {{ getShenShaText }}
+                    </span>
+                    <span class="text-gray-500 text-xs">[{{ position }}]</span>
+                    
+                    <span class="ml-auto text-red-600 font-bold border border-red-200 px-1 rounded bg-red-50 text-xs shadow-sm">
+                        {{ getLiuQinText }}
+                    </span>
+
+                    <span v-for="(tag, tidx) in tags?.gua" :key="'gt'+tidx" class="text-[10px] text-white px-1 rounded whitespace-nowrap shadow-sm mx-0.5" :class="tag.bgClass">
+                        {{tag.type}}:{{tag.target}}
+                    </span>
+                </div>
+                
+                <div class="text-xs text-gray-700 grid grid-cols-1 gap-2">
+                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1" v-if="tags && tags.stems">
+                        <strong class="text-gray-500">干:</strong>
+                        <div v-for="(stem, idx) in trigram.stems" :key="'s'+idx" class="flex items-center gap-1 bg-white border border-gray-200 px-1 py-0.5 rounded shadow-sm">
+                            <span class="text-sm font-bold text-gray-800">{{ stem }}</span>
+                            <span class="text-blue-600 text-[10px] border border-blue-200 px-1 rounded bg-blue-50 font-bold">{{ getShiShenText(stem) }}</span>
+                            <span v-for="(tag, tidx) in tags.stems[idx]" :key="'st'+tidx" class="text-[10px] text-white px-1 rounded whitespace-nowrap" :class="tag.bgClass">
+                                {{tag.type}}:{{tag.target}}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1" v-if="tags && tags.branches">
+                        <strong class="text-gray-500">支:</strong>
+                        <div v-for="(branch, idx) in trigram.branches" :key="'b'+idx" class="flex items-center gap-1 bg-white border border-gray-200 px-1 py-0.5 rounded shadow-sm">
+                            <span class="text-sm font-bold text-gray-800">{{ branch }}</span>
+                            <span v-for="(tag, tidx) in tags.branches[idx]" :key="'bt'+tidx" class="text-[10px] text-white px-1 rounded whitespace-nowrap" :class="tag.bgClass">
+                                {{tag.type}}:{{tag.target}}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `,
+    computed: {
+        getLiuQinText() {
+            return getLiuQin(this.baseGua?.element, this.trigram.element);
+        },
+        getShenShaText() {
+            return getShenSha(this.trigram.name);
+        }
+    },
+    methods: {
+        getShiShenText(stem) {
+            if (!this.baseGua || !STEMS[stem]) return '-';
+            return getShiShenDirect(this.baseGua.element, this.baseGua.yy, STEMS[stem].wx, STEMS[stem].yy);
+        }
+    }
+};
+
+const app = Vue.createApp({
+    components: { GuaTrigram },
+    data() {
+        return {
+            currentTimeStr: '',
+            sizhu: { year: '', month: '', day: '', hour: '' },
+            nums: { n1: 7, n2: 3, n3: 5 },
+            chartReady: false,
+            
+            original: { upper: null, lower: null, id: '' },
+            mutual: { upper: null, lower: null, id: '' },
+            changed: { upper: null, lower: null, id: '' },
+            
+            movingLine: 1,
+            tiPosition: 'lower',
+            yongPosition: 'upper',
+            
+            tiGua: null,
+            yongGua: null,
+            referenceType: 'ti',
+            
+            groupedLogs: {},
+            visualTags: {
+                pillars: { year_stem:[], year_branch:[], month_stem:[], month_branch:[], day_stem:[], day_branch:[], hour_stem:[], hour_branch:[] },
+                original_upper: { gua:[], stems:[], branches:[] }, original_lower: { gua:[], stems:[], branches:[] },
+                mutual_upper: { gua:[], stems:[], branches:[] }, mutual_lower: { gua:[], stems:[], branches:[] },
+                changed_upper: { gua:[], stems:[], branches:[] }, changed_lower: { gua:[], stems:[], branches:[] }
+            }
+        };
+    },
+    computed: {
+        originalGuaName() { return GUA_NAMES[this.original.id] || '未知'; },
+        mutualGuaName() { return GUA_NAMES[this.mutual.id] || '未知'; },
+        changedGuaName() { return GUA_NAMES[this.changed.id] || '未知'; },
+        currentBaseGua() { return this.referenceType === 'ti' ? this.tiGua : this.yongGua; }
+    },
+    mounted() {
+        this.initAutoTimeAndBazi();
+    },
+    methods: {
+        initAutoTimeAndBazi() {
+            if (typeof Lunar !== 'undefined') {
+                const date = new Date();
+                const lunar = Lunar.fromDate(date);
+                const baZi = lunar.getEightChar();
+                this.sizhu.year = baZi.getYear();
+                this.sizhu.month = baZi.getMonth();
+                this.sizhu.day = baZi.getDay();
+                this.sizhu.hour = baZi.getTime();
+                this.currentTimeStr = date.toLocaleString();
+            } else {
+                this.currentTimeStr = "组件加载中...";
+            }
+        },
+        findGuaByLines(linesArr) {
+            for (let i = 1; i <= 8; i++) {
+                if (BAGUA[i].lines[0] === linesArr[0] && BAGUA[i].lines[1] === linesArr[1] && BAGUA[i].lines[2] === linesArr[2]) {
+                    return { ...BAGUA[i], id: i };
+                }
+            }
+            return null;
+        },
+        getTiYong(pos, isChangedGua) {
+            if (isChangedGua) return this.tiPosition === pos ? '体' : '变';
+            return this.tiPosition === pos ? '体' : '用';
+        },
+        getStemWx(stemChar) { return STEMS[stemChar]?.wx; },
+        getBranchWx(branchChar) { return BRANCHES[branchChar]?.wx; },
+        
+        getShiShenText(stemChar) {
+            if (!this.currentBaseGua || !STEMS[stemChar]) return '-';
+            return getShiShenDirect(this.currentBaseGua.element, this.currentBaseGua.yy, STEMS[stemChar].wx, STEMS[stemChar].yy);
+        },
+        getBranchShiShenText(branchChar) {
+            if (!this.currentBaseGua || !BRANCHES[branchChar]) return '-';
+            return getShiShenDirect(this.currentBaseGua.element, this.currentBaseGua.yy, BRANCHES[branchChar].wx, BRANCHES[branchChar].yy);
+        },
+        getLiuQinText(targetWx) {
+            if (!targetWx || !this.currentBaseGua) return '-';
+            return getLiuQin(this.currentBaseGua.element, targetWx);
+        },
+
+        generateChart() {
+            if (!this.nums.n1 || !this.nums.n2 || !this.nums.n3) { alert("请输入起卦数字"); return; }
+            if (!this.sizhu.year) this.initAutoTimeAndBazi();
+            
+            let u1 = this.nums.n1 % 8 || 8;
+            let u2 = this.nums.n2 % 8 || 8;
+            this.original.upper = { ...BAGUA[u1], id: u1 };
+            this.original.lower = { ...BAGUA[u2], id: u2 };
+            this.original.id = `${u1}-${u2}`;
+            
+            this.movingLine = this.nums.n3 % 6 || 6;
+            this.tiPosition = this.movingLine <= 3 ? 'upper' : 'lower'; 
+            this.yongPosition = this.movingLine <= 3 ? 'lower' : 'upper';
+            
+            this.tiGua = this.tiPosition === 'upper' ? this.original.upper : this.original.lower;
+            this.yongGua = this.yongPosition === 'upper' ? this.original.upper : this.original.lower;
+
+            let sixLines = [...this.original.lower.lines, ...this.original.upper.lines];
+
+            let mutualLowerLines = [sixLines[1], sixLines[2], sixLines[3]];
+            let mutualUpperLines = [sixLines[2], sixLines[3], sixLines[4]];
+            this.mutual.lower = this.findGuaByLines(mutualLowerLines);
+            this.mutual.upper = this.findGuaByLines(mutualUpperLines);
+            this.mutual.id = `${this.mutual.upper.id}-${this.mutual.lower.id}`;
+
+            let changedLines = [...sixLines];
+            let mIndex = this.movingLine - 1;
+            changedLines[mIndex] = changedLines[mIndex] === 1 ? 0 : 1;
+            
+            let changedLowerLines = [changedLines[0], changedLines[1], changedLines[2]];
+            let changedUpperLines = [changedLines[3], changedLines[4], changedLines[5]];
+            this.changed.lower = this.findGuaByLines(changedLowerLines);
+            this.changed.upper = this.findGuaByLines(changedUpperLines);
+            this.changed.id = `${this.changed.upper.id}-${this.changed.lower.id}`;
+
+            this.initTagsAndLogs();
+            this.runAnalysis();
+            this.chartReady = true;
+        },
+
+        initTagsAndLogs() {
+            let keys = ['original_upper', 'original_lower', 'mutual_upper', 'mutual_lower', 'changed_upper', 'changed_lower'];
+            let guas = [this.original.upper, this.original.lower, this.mutual.upper, this.mutual.lower, this.changed.upper, this.changed.lower];
+            
+            keys.forEach((k, idx) => {
+                this.visualTags[k].gua = [];
+                this.visualTags[k].stems = guas[idx].stems.map(() => []);
+                this.visualTags[k].branches = guas[idx].branches.map(() => []);
+            });
+
+            let pKeys = ['year', 'month', 'day', 'hour'];
+            pKeys.forEach(k => {
+                this.visualTags.pillars[k + '_stem'] = [];
+                this.visualTags.pillars[k + '_branch'] = [];
+            });
+
+            // 初始化文本归类结构 (按卦排布，外加全局)
+            this.groupedLogs = {
+                global: { title: '全局三合与卦象自带冲', logs: [] },
+                original_upper: { title: '☰ 主卦上卦', logs: [] },
+                original_lower: { title: '☱ 主卦下卦', logs: [] },
+                mutual_upper: { title: '☲ 互卦上卦', logs: [] },
+                mutual_lower: { title: '☳ 互卦下卦', logs: [] },
+                changed_upper: { title: '☴ 变卦上卦', logs: [] },
+                changed_lower: { title: '☵ 变卦下卦', logs: [] }
+            };
+        },
+        
+        addLog(groupKey, msg, typeClass) {
+            // 在同组内做简单的消息排重
+            if (!this.groupedLogs[groupKey].logs.some(l => l.msg === msg)) {
+                this.groupedLogs[groupKey].logs.push({ msg, typeClass });
+            }
+        },
+
+        runAnalysis() {
+            const muKu = { '木':'未', '火':'戌', '土':'戌', '金':'丑', '水':'辰' };
+            const SHORT_NAMES = { 'year': '年', 'month': '月', 'day': '日', 'hour': '时' };
+            let pillars = [];
+            let szKeys = ['year','month','day','hour'];
+            szKeys.forEach((k) => {
+                if (this.sizhu[k] && this.sizhu[k].length >= 2) {
+                    pillars.push({ key: k, short: SHORT_NAMES[k], name: SHORT_NAMES[k]+'柱', stem: this.sizhu[k].charAt(0), branch: this.sizhu[k].charAt(1) });
+                }
+            });
+
+            let guas = [
+                { key: 'original_upper', source: '主上', g: this.original.upper },
+                { key: 'original_lower', source: '主下', g: this.original.lower },
+                { key: 'mutual_upper', source: '互上', g: this.mutual.upper },
+                { key: 'mutual_lower', source: '互下', g: this.mutual.lower },
+                { key: 'changed_upper', source: '变上', g: this.changed.upper },
+                { key: 'changed_lower', source: '变下', g: this.changed.lower }
+            ];
+
+            // 1. 卦与四纲对比 
+            guas.forEach(guaObj => {
+                let g = guaObj.g;
+                pillars.forEach(p => {
+                    g.stems.forEach((s, sIdx) => {
+                        let rels = checkRelations(s, p.stem);
+                        rels.forEach(r => {
+                            this.addLog(guaObj.key, `${guaObj.source}[${s}] 与 ${p.name}[${p.stem}] 产生【${r.detail}】`, r.class);
+                            this.visualTags[guaObj.key].stems[sIdx].push({ type: r.shortType, target: p.short, bgClass: r.bgClass });
+                            this.visualTags.pillars[p.key + '_stem'].push({ type: r.shortType, target: guaObj.source, bgClass: r.bgClass });
+                        });
+                    });
+                    g.branches.forEach((b, bIdx) => {
+                        let rels = checkRelations(b, p.branch);
+                        rels.forEach(r => {
+                            this.addLog(guaObj.key, `${guaObj.source}[${b}] 与 ${p.name}[${p.branch}] 产生【${r.detail}】`, r.class);
+                            this.visualTags[guaObj.key].branches[bIdx].push({ type: r.shortType, target: p.short, bgClass: r.bgClass });
+                            this.visualTags.pillars[p.key + '_branch'].push({ type: r.shortType, target: guaObj.source, bgClass: r.bgClass });
+                        });
+                    });
+                    // 判断卦之五行是否入四纲地支墓 (灰色背景)
+                    if (muKu[g.element] === p.branch) {
+                        this.addLog(guaObj.key, `${guaObj.source}(${g.element}行) 入 ${p.name}[${p.branch}] 之墓`, 'bg-gray-200 text-gray-800');
+                        this.visualTags[guaObj.key].gua.push({ type: '入墓', target: p.short, bgClass: 'bg-gray-500' });
+                        this.visualTags.pillars[p.key + '_branch'].push({ type: '墓库', target: guaObj.source, bgClass: 'bg-gray-500' });
+                    }
+                });
+            });
+
+            // 2. 卦与卦内部对比 (相互追加日志保证分类内数据完整)
+            for (let i = 0; i < guas.length; i++) {
+                for (let j = i + 1; j < guas.length; j++) {
+                    let g1 = guas[i], g2 = guas[j];
+                    
+                    // 卦冲判定归入 global
+                    if (GUA_CHONG[g1.g.name] === g2.g.name) {
+                        this.addLog('global', `${g1.source}(${g1.g.name}卦) 与 ${g2.source}(${g2.g.name}卦) 产生【卦象相冲】`, 'bg-red-100 text-red-800 font-bold');
+                        this.visualTags[g1.key].gua.push({ type: '卦冲', target: g2.source, bgClass: 'bg-red-600' });
+                        this.visualTags[g2.key].gua.push({ type: '卦冲', target: g1.source, bgClass: 'bg-red-600' });
+                    }
+
+                    // 基础生克合冲 (互相追加记录，以便单独查看该卦时数据齐全)
+                    g1.g.stems.forEach((s1, s1Idx) => {
+                        g2.g.stems.forEach((s2, s2Idx) => {
+                            let rels = checkRelations(s1, s2);
+                            rels.forEach(r => {
+                                this.addLog(g1.key, `${g1.source}[${s1}] 与 ${g2.source}[${s2}] 产生【${r.detail}】`, r.class);
+                                this.addLog(g2.key, `${g2.source}[${s2}] 与 ${g1.source}[${s1}] 产生【${r.detail}】`, r.class);
+                                this.visualTags[g1.key].stems[s1Idx].push({ type: r.shortType, target: g2.source, bgClass: r.bgClass });
+                                this.visualTags[g2.key].stems[s2Idx].push({ type: r.shortType, target: g1.source, bgClass: r.bgClass });
+                            });
+                        });
+                    });
+                    g1.g.branches.forEach((b1, b1Idx) => {
+                        g2.g.branches.forEach((b2, b2Idx) => {
+                            let rels = checkRelations(b1, b2);
+                            rels.forEach(r => {
+                                this.addLog(g1.key, `${g1.source}[${b1}] 与 ${g2.source}[${b2}] 产生【${r.detail}】`, r.class);
+                                this.addLog(g2.key, `${g2.source}[${b2}] 与 ${g1.source}[${b1}] 产生【${r.detail}】`, r.class);
+                                this.visualTags[g1.key].branches[b1Idx].push({ type: r.shortType, target: g2.source, bgClass: r.bgClass });
+                                this.visualTags[g2.key].branches[b2Idx].push({ type: r.shortType, target: g1.source, bgClass: r.bgClass });
+                            });
+                        });
+                        // 判断 g2卦五行 入 g1藏支墓
+                        if (muKu[g2.g.element] === b1) {
+                            let msg = `${g2.source}(${g2.g.element}行) 入 ${g1.source}[${b1}] 之墓`;
+                            this.addLog(g1.key, msg, 'bg-gray-200 text-gray-800');
+                            this.addLog(g2.key, msg, 'bg-gray-200 text-gray-800');
+                            this.visualTags[g2.key].gua.push({ type: '入墓', target: g1.source, bgClass: 'bg-gray-500' });
+                            this.visualTags[g1.key].branches[b1Idx].push({ type: '墓库', target: g2.source, bgClass: 'bg-gray-500' });
+                        }
+                    });
+                    // 判断 g1卦五行 入 g2藏支墓
+                    g2.g.branches.forEach((b2, b2Idx) => {
+                        if (muKu[g1.g.element] === b2) {
+                            let msg = `${g1.source}(${g1.g.element}行) 入 ${g2.source}[${b2}] 之墓`;
+                            this.addLog(g1.key, msg, 'bg-gray-200 text-gray-800');
+                            this.addLog(g2.key, msg, 'bg-gray-200 text-gray-800');
+                            this.visualTags[g1.key].gua.push({ type: '入墓', target: g2.source, bgClass: 'bg-gray-500' });
+                            this.visualTags[g2.key].branches[b2Idx].push({ type: '墓库', target: g1.source, bgClass: 'bg-gray-500' });
+                        }
+                    });
+                }
+            }
+
+            // 3. 全局判断完整三合局
+            const sanHeGroups = [
+                { name: '水局', elems: ['申','子','辰'] },
+                { name: '木局', elems: ['亥','卯','未'] },
+                { name: '火局', elems: ['寅','午','戌'] },
+                { name: '金局', elems: ['巳','酉','丑'] }
+            ];
+            let allBranches = [];
+            pillars.forEach(p => allBranches.push({ char: p.branch, short: p.short, targetType: 'pillar', key: p.key + '_branch' }));
+            guas.forEach(guaObj => guaObj.g.branches.forEach((b, bIdx) => 
+                allBranches.push({ char: b, short: guaObj.source, targetType: 'gua', key: guaObj.key, bIdx: bIdx })
+            ));
+
+            sanHeGroups.forEach(group => {
+                let has0 = allBranches.filter(x => x.char === group.elems[0]);
+                let has1 = allBranches.filter(x => x.char === group.elems[1]);
+                let has2 = allBranches.filter(x => x.char === group.elems[2]);
+
+                if (has0.length > 0 && has1.length > 0 && has2.length > 0) {
+                    this.addLog('global', `【全局三合】 局中集齐 ${group.elems.join('')}，形成完整三合${group.name}`, 'bg-purple-100 text-purple-800 font-bold');
+                    
+                    let involved = [...has0, ...has1, ...has2];
+                    involved.forEach(item => {
+                        let tag = { type: '三合', target: group.name, bgClass: 'bg-purple-600' };
+                        if (item.targetType === 'pillar') {
+                            this.visualTags.pillars[item.key].push(tag);
+                        } else {
+                            this.visualTags[item.key].branches[item.bIdx].push(tag);
+                        }
+                    });
+                }
+            });
+        }
+    }
+});
+app.mount('#app');
+</script>
+</body>
+</html>
